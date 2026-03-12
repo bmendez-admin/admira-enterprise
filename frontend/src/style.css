@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta Corporativa ADMIRA */
+  --color-admira-50: #f4f7f1;
+  --color-admira-100: #e5eedd;
+  --color-admira-500: #689840; /* VERDE PRINCIPAL */
+  --color-admira-600: #507731; /* VERDE OSCURO (Para hovers) */
+  --color-admira-900: #2b3e1f; /* VERDE MUY OSCURO (Para textos fuertes) */
+}
+
+/* Personalización del Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }

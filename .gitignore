@@ -1,0 +1,19 @@
+# Node / Frontend
+node_modules/
+dist/
+npm-debug.log
+
+# Python / Backend
+__pycache__/
+*.pyc
+venv/
+env/
+.env
+
+# Bases de datos locales
+*.sqlite3
+*.db
+
+# Sistema Operativo
+.DS_Store
+Thumbs.db

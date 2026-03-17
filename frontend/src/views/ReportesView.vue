@@ -202,7 +202,7 @@ const exportarExcelProfesional = () => {
                         :class="`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs transition-all border ${mostrarSoloInestables ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`"
                     >
                         <AlertTriangle class="w-4 h-4" />
-                        Solo equipos inestables
+                        Solo equipos inestableszzz
                     </button>
                 </div>
 

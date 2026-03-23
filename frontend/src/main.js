@@ -4,35 +4,24 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import VueApexCharts from "vue3-apexcharts";
 import router from './router'
-import axios from 'axios' // <-- 1. Importamos a nuestro mensajero
+import axios from 'axios'
 
-// ==========================================
-// CONFIGURACIÓN GLOBAL DE SEGURIDAD (AXIOS)
-// ==========================================
-
-// Le decimos a Axios dónde vive tu Backend para no tener que escribir la URL completa cada vez
-axios.defaults.baseURL = 'http://127.0.0.1:8000';
-
-// EL INTERCEPTOR "ANTI-AMNESIA"
-// Antes de que Vue mande cualquier petición a FastAPI, este policía la revisa.
-// Si encuentra el Token en la memoria del navegador, se lo pega a la mochila (Headers).
-axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
-
-// ==========================================
-// INICIALIZACIÓN DE VUE
-// ==========================================
+// 1. Inicialización Base
 const app = createApp(App);
+const pinia = createPinia();
 
-app.use(createPinia());
-app.use(VueApexCharts); // Tus gráficas siguen intactas y funcionando
+app.use(pinia);
+app.use(VueApexCharts);
 app.use(router);
+
+// Importamos los Stores DESPUÉS de haber inicializado Pinia
+import { useAuthStore } from './stores/auth';
+import { useToastStore } from './stores/toast';
+
+const authStore = useAuthStore(pinia);
+const toastStore = useToastStore(pinia);
+
+// 2. Configuración de Axios
+axios.defaults.baseURL = 'http://127.0.0.1:8000';
 
 app.mount('#app');

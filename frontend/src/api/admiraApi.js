@@ -1,20 +1,48 @@
 import axios from 'axios';
+import router from '../router';
+import { useAuthStore } from '../stores/auth';
+import { useToastStore } from '../stores/toast';
 
-// Instancia centralizada para conectarnos a tu FastAPI
+// 1. EL ARREGLO ESTÁ AQUÍ: Añadimos /api a la URL base
 const admiraApi = axios.create({
-    baseURL: 'http://127.0.0.1:8000/api',
-    headers: {
-        'Content-Type': 'application/json'
-    }
+  baseURL: 'http://127.0.0.1:8000/api'
 });
 
-// Interceptor para atrapar errores en la consola y no romper la app
+// 2. INTERCEPTOR DE PETICIÓN
+admiraApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    delete config.headers.Authorization;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
+// 3. INTERCEPTOR DE RESPUESTA
 admiraApi.interceptors.response.use(
-    response => response,
-    error => {
-        console.error('Error en la API:', error.response?.data || error.message);
-        return Promise.reject(error);
+  (response) => response,
+  (error) => {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      if (router.currentRoute.value.name !== 'Login') {
+        const authStore = useAuthStore();
+        const toastStore = useToastStore();
+
+        authStore.logout();
+        
+        toastStore.agregarToast({
+          tipo: 'error',
+          titulo: 'Sesión Expirada',
+          mensaje: 'Tu sesión es inválida o ha caducado. Vuelve a entrar.'
+        });
+
+        router.push({ name: 'Login' });
+      }
     }
+    return Promise.reject(error);
+  }
 );
 
 export default admiraApi;

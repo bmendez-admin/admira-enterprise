@@ -6,13 +6,13 @@ const { datosGraficas, kpis } = useDashboard();
 
 const barOptions = computed(() => ({
   chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
-  colors: ['#EF4444'], // Rojo para las fallas (Se mantiene para contraste de alerta)
+  colors: ['#EF4444'], 
   plotOptions: { 
       bar: { borderRadius: 4, horizontal: false, columnWidth: '45%', distributed: false } 
   },
   xaxis: { 
       categories: datosGraficas.value.barras.categorias,
-      labels: { style: { fontSize: '11px', fontWeight: 500 } }
+      labels: { style: { fontSize: '10px', fontWeight: 500 } } // Reducimos levemente el texto base
   },
   grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
   dataLabels: { enabled: false },
@@ -28,9 +28,8 @@ const barSeries = computed(() => [
 
 const pieOptions = computed(() => ({
     labels: ['Conectados', 'Desconectados'],
-    // AQUÍ ESTÁ LA MAGIA: Tu color corporativo como principal
     colors: ['#689840', '#F59E0B'], 
-    legend: { position: 'bottom', fontSize: '12px' },
+    legend: { position: 'bottom', fontSize: '11px' }, // Leyenda un poco más ajustada
     dataLabels: { enabled: false },
     plotOptions: { 
         pie: { 
@@ -38,13 +37,13 @@ const pieOptions = computed(() => ({
                 size: '75%',
                 labels: {
                     show: true,
-                    name: { show: true, fontSize: '12px', fontFamily: 'Inter, sans-serif', color: '#64748b' },
-                    value: { show: true, fontSize: '24px', fontFamily: 'Inter, sans-serif', fontWeight: 700, color: '#1e293b' },
+                    name: { show: true, fontSize: '11px', fontFamily: 'Inter, sans-serif', color: '#64748b' },
+                    value: { show: true, fontSize: '20px', fontFamily: 'Inter, sans-serif', fontWeight: 700, color: '#1e293b' },
                     total: { 
                         show: true, 
                         showAlways: true,
-                        label: 'Inventario Total', 
-                        fontSize: '12px', 
+                        label: 'Total', // Etiqueta más corta para móvil
+                        fontSize: '11px', 
                         fontWeight: 600,
                         color: '#64748b',
                         formatter: function () {
@@ -63,26 +62,28 @@ const pieSeries = computed(() => {
 </script>
 
 <template>
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-8 w-full">
     
-    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col hover:shadow-md transition-shadow">
-      <div class="mb-6 flex justify-between items-center">
+    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-6 flex flex-col hover:shadow-md transition-shadow w-full overflow-hidden">
+      <div class="mb-4 md:mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div>
-              <h3 class="font-bold text-slate-800">Concentración de Caídas</h3>
-              <p class="text-xs text-slate-400 mt-1">Equipos distintos caídos por franja horaria</p>
+              <h3 class="font-bold text-slate-800 text-sm md:text-base">Concentración de Caídas</h3>
+              <p class="text-[10px] md:text-xs text-slate-400 mt-1">Equipos caídos por franja horaria</p>
           </div>
+      </div>
+      <div class="flex-1 w-full min-h-[250px] md:min-h-[300px] overflow-x-auto overflow-y-hidden">
+          <div class="min-w-[400px] lg:min-w-full h-full">
+            <apexchart type="bar" height="100%" :options="barOptions" :series="barSeries"></apexchart>
           </div>
-      <div class="flex-1 w-full min-h-[300px]">
-          <apexchart type="bar" height="100%" :options="barOptions" :series="barSeries"></apexchart>
       </div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col hover:shadow-md transition-shadow">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-6 flex flex-col hover:shadow-md transition-shadow w-full">
         <div class="mb-4 text-center sm:text-left">
-            <h3 class="font-bold text-slate-800">Estado de Red</h3>
-            <p class="text-xs text-slate-400 mt-1">Estatus actual del inventario activo</p>
+            <h3 class="font-bold text-slate-800 text-sm md:text-base">Estado de Red</h3>
+            <p class="text-[10px] md:text-xs text-slate-400 mt-1">Estatus del inventario activo</p>
         </div>
-        <div class="flex-1 flex items-center justify-center min-h-[300px]">
+        <div class="flex-1 flex items-center justify-center min-h-[250px] md:min-h-[300px] w-full">
             <apexchart type="donut" width="100%" :options="pieOptions" :series="pieSeries"></apexchart>
         </div>
     </div>

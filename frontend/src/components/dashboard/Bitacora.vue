@@ -21,7 +21,7 @@ const paginaAnterior = async () => {
 };
 
 const paginaSiguiente = async () => {
-    if (filtros.pagina < datosTabla.value.total_paginas) {
+    if (filtros.pagina < datosTabla.total_paginas) {
         filtros.pagina++;
         await cargarTabla();
     }
@@ -35,75 +35,77 @@ const paginaSiguiente = async () => {
          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-admira-500"></div>
      </div>
 
-     <div class="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50/50">
+     <div class="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
         <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
             <Calendar class="w-4 h-4 text-admira-500"/>
             Bitácora de Reportes
         </h3>
-        <div class="flex items-center gap-2 text-xs font-bold text-slate-400 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+        <div class="flex items-center gap-2 text-[10px] md:text-xs font-bold text-slate-400 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm self-start sm:self-auto">
             {{ datosTabla.total_registros.toLocaleString() }} registros encontrados
         </div>
      </div>
      
-     <div class="overflow-x-auto min-h-[450px]">
-        <table class="w-full text-left text-sm text-slate-600">
-           <thead class="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-              <tr>
-                 <th class="px-6 py-4">Dispositivo</th>
-                 <th class="px-6 py-4">Fecha y Hora</th>
-                 <th class="px-6 py-4">Estado</th>
-                 <th class="px-6 py-4 text-right">Archivo Origen</th>
-              </tr>
-           </thead>
-           <tbody class="divide-y divide-gray-100">
-              <tr v-if="datosTabla.items.length === 0">
-                  <td colspan="4" class="text-center py-10 text-slate-400 font-medium">
-                      No se encontraron reportes con estos filtros.
-                  </td>
-              </tr>
+     <div class="overflow-x-auto w-full">
+        <div class="min-w-[600px] md:min-w-full min-h-[450px]">
+          <table class="w-full text-left text-sm text-slate-600">
+             <thead class="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                <tr>
+                   <th class="px-4 md:px-6 py-3 md:py-4">Dispositivo</th>
+                   <th class="px-4 md:px-6 py-3 md:py-4">Fecha y Hora</th>
+                   <th class="px-4 md:px-6 py-3 md:py-4">Estado</th>
+                   <th class="px-4 md:px-6 py-3 md:py-4 text-right">Archivo Origen</th>
+                </tr>
+             </thead>
+             <tbody class="divide-y divide-gray-100">
+                <tr v-if="datosTabla.items.length === 0">
+                   <td colspan="4" class="text-center py-10 text-slate-400 font-medium text-xs md:text-sm">
+                       No se encontraron reportes con estos filtros.
+                   </td>
+                </tr>
 
-              <tr v-for="(f, i) in datosTabla.items" :key="i" class="hover:bg-admira-50/50 transition-colors group">
-                 <td class="px-6 py-3.5">
-                    <div class="flex items-center gap-3">
-                       <div :class="`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-[10px] shadow-sm border ${f.ESTADO === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`">
-                          {{ f.PLAYER ? f.PLAYER.substring(0,2).toUpperCase() : '--' }}
-                       </div>
-                       <span class="font-bold text-xs text-slate-700 group-hover:text-admira-600 transition-colors">{{ f.PLAYER }}</span>
-                    </div>
-                 </td>
-                 <td class="px-6 py-3.5 font-mono text-[11px] text-slate-500 font-medium">
-                    {{ f.FECHA }} <span class="text-slate-300 mx-1">|</span> {{ f.HORARIO_LEGIBLE }}
-                 </td>
-                 <td class="px-6 py-3.5">
-                    <span :class="['inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold border', getStatusColor(f.ESTADO)]">
-                       <div :class="`w-1.5 h-1.5 rounded-full mr-1.5 ${f.ESTADO==='Activo'?'bg-emerald-500':'bg-rose-500'}`"></div>
-                       {{ f.ESTADO }}
-                    </span>
-                 </td>
-                 <td class="px-6 py-3.5 text-right text-[10px] text-slate-400 font-mono truncate max-w-[150px]" :title="f.ARCHIVO_ORIGEN">
-                    {{ (f.ARCHIVO_ORIGEN || '').replace('.xlsx', '').replace('.csv', '') || '---' }}
-                 </td>
-              </tr>
-           </tbody>
-        </table>
+                <tr v-for="(f, i) in datosTabla.items" :key="i" class="hover:bg-admira-50/50 transition-colors group">
+                   <td class="px-4 md:px-6 py-3 md:py-3.5">
+                      <div class="flex items-center gap-2 md:gap-3">
+                         <div :class="`w-7 h-7 md:w-8 md:h-8 rounded-lg md:rounded-xl flex items-center justify-center font-bold text-[9px] md:text-[10px] shadow-sm border ${f.ESTADO === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`">
+                            {{ f.PLAYER ? f.PLAYER.substring(0,2).toUpperCase() : '--' }}
+                         </div>
+                         <span class="font-bold text-[11px] md:text-xs text-slate-700 group-hover:text-admira-600 transition-colors truncate max-w-[120px] md:max-w-none">{{ f.PLAYER }}</span>
+                      </div>
+                   </td>
+                   <td class="px-4 md:px-6 py-3 md:py-3.5 font-mono text-[10px] md:text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                      {{ f.FECHA }} <span class="text-slate-300 mx-1">|</span> {{ f.HORARIO_LEGIBLE }}
+                   </td>
+                   <td class="px-4 md:px-6 py-3 md:py-3.5 whitespace-nowrap">
+                      <span :class="['inline-flex items-center px-2 md:px-2.5 py-0.5 md:py-1 rounded-md text-[9px] md:text-[10px] font-bold border', getStatusColor(f.ESTADO)]">
+                         <div :class="`w-1.5 h-1.5 rounded-full mr-1 md:mr-1.5 ${f.ESTADO==='Activo'?'bg-emerald-500':'bg-rose-500'}`"></div>
+                         {{ f.ESTADO }}
+                      </span>
+                   </td>
+                   <td class="px-4 md:px-6 py-3 md:py-3.5 text-right text-[9px] md:text-[10px] text-slate-400 font-mono truncate max-w-[100px] md:max-w-[150px]" :title="f.ARCHIVO_ORIGEN">
+                      {{ (f.ARCHIVO_ORIGEN || '').replace('.xlsx', '').replace('.csv', '') || '---' }}
+                   </td>
+                </tr>
+             </tbody>
+          </table>
+        </div>
      </div>
      
-     <div class="px-6 py-4 border-t border-gray-100 flex justify-between items-center bg-slate-50/50">
-         <span class="text-xs font-bold text-slate-500">
+     <div class="px-4 md:px-6 py-3 md:py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3 bg-slate-50/50">
+         <span class="text-[10px] md:text-xs font-bold text-slate-500 order-2 sm:order-1">
             Página {{ datosTabla.pagina_actual }} de {{ datosTabla.total_paginas.toLocaleString() }}
          </span>
-         <div class="flex gap-2">
+         <div class="flex gap-2 w-full sm:w-auto justify-between sm:justify-end order-1 sm:order-2">
              <button 
                 @click="paginaAnterior" 
                 :disabled="filtros.pagina === 1 || cargando" 
-                class="p-2 rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-admira-50 hover:border-admira-500 hover:text-admira-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                class="p-2 flex-1 sm:flex-none flex justify-center rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-admira-50 hover:border-admira-500 hover:text-admira-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
              >
                 <ChevronLeft class="w-4 h-4"/>
              </button>
              <button 
                 @click="paginaSiguiente" 
                 :disabled="filtros.pagina === datosTabla.total_paginas || cargando" 
-                class="p-2 rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-admira-50 hover:border-admira-500 hover:text-admira-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                class="p-2 flex-1 sm:flex-none flex justify-center rounded-xl bg-white border border-gray-200 shadow-sm hover:bg-admira-50 hover:border-admira-500 hover:text-admira-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
              >
                 <ChevronRight class="w-4 h-4"/>
              </button>

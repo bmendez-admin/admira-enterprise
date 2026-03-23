@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { useRouter } from 'vue-router'; // Necesitamos el router para redirigir al login
+import { useRouter } from 'vue-router';
 import {
   LayoutDashboard,
   MonitorSmartphone,
@@ -9,12 +9,13 @@ import {
   ChevronDown,
   Globe,
   Layers,
-  LogOut // Importamos el ícono de Cerrar Sesión
+  LogOut,
+  X 
 } from 'lucide-vue-next';
 import { useDashboard } from '../../composables/useDashboard';
-import { useAuthStore } from '../../stores/auth'; // Importamos la bóveda
+import { useAuthStore } from '../../stores/auth';
 
-const { filtros, configInicial, recargarDashboard } = useDashboard();
+const { filtros, configInicial, recargarDashboard, menuMovilAbierto } = useDashboard();
 const dropdownProyectoAbierto = ref(false);
 
 const router = useRouter();
@@ -24,31 +25,45 @@ const seleccionarProyecto = async (proyecto) => {
   filtros.proyecto = proyecto;
   filtros.pagina = 1;
   dropdownProyectoAbierto.value = false;
+  menuMovilAbierto.value = false; // Cerramos el menú en móvil al elegir proyecto
   await recargarDashboard();
 };
 
-// ==========================================
-// FUNCIÓN DE SALIDA (LOGOUT)
-// ==========================================
 const cerrarSesion = () => {
-  authStore.logout(); // Destruimos la pulsera VIP
-  router.push({ name: 'Login' }); // Lo rebotamos a la pantalla corporativa
+  authStore.logout();
+  router.push({ name: 'Login' });
 };
 </script>
 
 <template>
-  <aside class="w-72 bg-white h-screen fixed left-0 top-0 border-r border-gray-200 flex flex-col shadow-sm z-10">
+  <div 
+    v-if="menuMovilAbierto" 
+    @click="menuMovilAbierto = false" 
+    class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden transition-opacity"
+  ></div>
 
-    <div class="h-20 flex items-center px-6 border-b border-gray-100">
-      <div class="w-10 h-10 bg-admira-500 rounded-xl flex items-center justify-center shadow-md shadow-admira-500/30">
-        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
+  <aside 
+    :class="[
+      'w-72 bg-white h-screen fixed left-0 top-0 border-r border-gray-200 flex flex-col shadow-2xl md:shadow-sm z-50 transition-transform duration-300 ease-in-out',
+      menuMovilAbierto ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+    ]"
+  >
+    <div class="h-20 flex items-center justify-between px-6 border-b border-gray-100">
+      <div class="flex items-center">
+        <div class="w-10 h-10 bg-admira-500 rounded-xl flex items-center justify-center shadow-md shadow-admira-500/30">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h1 class="text-lg font-black text-slate-800 tracking-tight leading-none">ADMIRA</h1>
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Enterprise</p>
+        </div>
       </div>
-      <div class="ml-3">
-        <h1 class="text-lg font-black text-slate-800 tracking-tight leading-none">ADMIRA</h1>
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Enterprise</p>
-      </div>
+      
+      <button @click="menuMovilAbierto = false" class="md:hidden p-2 text-slate-400 hover:text-rose-500 rounded-lg">
+        <X class="w-6 h-6" />
+      </button>
     </div>
 
     <div class="pt-6 px-6 flex-1 flex flex-col">
@@ -93,7 +108,7 @@ const cerrarSesion = () => {
       </div>
 
       <nav class="space-y-1.5 flex-1 relative z-10">
-        <router-link to="/"
+        <router-link to="/" @click="menuMovilAbierto = false"
           class="flex items-center px-4 py-3 rounded-xl transition-all group text-slate-500 hover:bg-slate-50"
           active-class="bg-admira-50 text-admira-600 font-bold"
           exact-active-class="bg-admira-50 text-admira-600 font-bold">
@@ -101,14 +116,14 @@ const cerrarSesion = () => {
           <span class="text-sm">Dashboard</span>
         </router-link>
 
-        <router-link to="/monitoreo"
+        <router-link to="/monitoreo" @click="menuMovilAbierto = false"
           class="flex items-center px-4 py-3 rounded-xl text-slate-500 font-semibold hover:bg-slate-50 transition-colors group"
           active-class="bg-admira-50 text-admira-600 font-bold">
           <MonitorSmartphone class="w-5 h-5 mr-3" />
           <span class="text-sm">Monitoreo</span>
         </router-link>
 
-        <router-link to="/reportes"
+        <router-link to="/reportes" @click="menuMovilAbierto = false"
           class="flex items-center px-4 py-3 rounded-xl text-slate-500 font-semibold hover:bg-slate-50 transition-colors group"
           active-class="bg-admira-50 text-admira-600 font-bold">
           <FileText class="w-5 h-5 mr-3" />
@@ -117,7 +132,7 @@ const cerrarSesion = () => {
       </nav>
 
       <div class="mt-auto pt-6 pb-2">
-        <router-link to="/configuracion" class="flex items-center px-4 py-3 rounded-xl text-slate-500 font-semibold hover:bg-slate-50 transition-colors group">
+        <router-link to="/configuracion" @click="menuMovilAbierto = false" class="flex items-center px-4 py-3 rounded-xl text-slate-500 font-semibold hover:bg-slate-50 transition-colors group">
           <Settings class="w-5 h-5 mr-3 group-hover:text-admira-600 transition-colors" />
           <span class="text-sm group-hover:text-admira-600 transition-colors">Configuración</span>
         </router-link>
@@ -125,25 +140,18 @@ const cerrarSesion = () => {
     </div>
 
     <div class="p-6 border-t border-gray-100 flex justify-between items-center relative z-10 bg-slate-50/50">
-
       <div class="flex items-center gap-3 overflow-hidden">
-        <div
-          class="w-9 h-9 shrink-0 rounded-full bg-admira-100 border border-admira-200 flex items-center justify-center text-xs font-bold text-admira-700">
+        <div class="w-9 h-9 shrink-0 rounded-full bg-admira-100 border border-admira-200 flex items-center justify-center text-xs font-bold text-admira-700">
           {{ authStore.usuario?.nombre?.charAt(0) || 'A' }}
         </div>
         <div class="truncate">
-          <p class="text-sm font-bold text-slate-800 leading-none truncate">{{ authStore.usuario?.nombre ||
-            'Administrador' }}</p>
+          <p class="text-sm font-bold text-slate-800 leading-none truncate">{{ authStore.usuario?.nombre || 'Administrador' }}</p>
           <p class="text-[10px] text-slate-400 mt-1 truncate">{{ authStore.usuario?.sub || 'admin@admira.com' }}</p>
         </div>
       </div>
-
-      <button @click="cerrarSesion"
-        class="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-rose-50"
-        title="Cerrar Sesión">
+      <button @click="cerrarSesion" class="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-rose-50" title="Cerrar Sesión">
         <LogOut class="w-5 h-5" />
       </button>
-
     </div>
   </aside>
 </template>

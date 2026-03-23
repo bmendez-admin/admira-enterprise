@@ -1,16 +1,15 @@
 <script setup>
 import { onMounted } from 'vue';
-import { useAuthStore } from './stores/auth'; // <-- Inyectamos a nuestro guardia
+import { useAuthStore } from './stores/auth';
 import Sidebar from './components/layout/Sidebar.vue';
 import Header from './components/layout/Header.vue';
 import { useDashboard } from './composables/useDashboard';
 import Toast from './components/ui/Toast.vue';
 
 const { cargarConfiguracion, recargarDashboard } = useDashboard();
-const authStore = useAuthStore(); // Iniciamos el almacén
+const authStore = useAuthStore();
 
 onMounted(async () => {
-  // REGLA DE ORO: Solo intentamos descargar datos si el usuario ya tiene su pulsera VIP
   if (authStore.isAuthenticated) {
     await cargarConfiguracion();
     await recargarDashboard();
@@ -19,9 +18,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-[#F8FAFC] font-sans text-slate-900">
+  <div class="flex min-h-screen bg-[#F8FAFC] font-sans text-slate-900 overflow-x-hidden">
     <Sidebar v-if="$route.name !== 'Login'" />
-    <main :class="['flex-1 w-full flex flex-col', $route.name !== 'Login' ? 'ml-72 p-8' : '']">
+    <main :class="['flex-1 w-full flex flex-col min-w-0 transition-all duration-300', $route.name !== 'Login' ? 'md:ml-72 p-4 md:p-8' : '']">
       <Header v-if="$route.name !== 'Login'" />
       <router-view />
     </main>

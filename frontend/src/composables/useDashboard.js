@@ -11,11 +11,13 @@ const filtros = reactive({
     filasPorPagina: 10
 });
 
+const menuMovilAbierto = ref(false); // <-- NUESTRO CONTROLADOR MÓVIL
 const configInicial = ref({ proyectos: [], fecha_inicio_sugerida: '', fecha_fin_sugerida: '' });
 const kpis = ref({ uptime: 0, off: 0, uniquePlayers: 0, totalRegistros: 0, crit: 0 });
 const datosTabla = ref({ items: [], total_registros: 0, total_paginas: 1, pagina_actual: 1 });
 const datosGraficas = ref({ barras: { categorias: [], series: [] } });
 const cargando = ref(false);
+const dispositivosMonitoreo = ref([]);
 
 export function useDashboard() {
     
@@ -84,19 +86,15 @@ export function useDashboard() {
         }
     };
 
-    // 5. SINCRONIZAR BASE DE DATOS (PLAN B)
+    // 5. SINCRONIZAR BASE DE DATOS
     const sincronizarBaseDeDatos = async () => {
         cargando.value = true;
         try {
-            // Llamada al endpoint de FastAPI que creamos
             await admiraApi.post('/sincronizar');
             console.log("Sincronización en proceso...");
-            
-            // Esperamos a que el proceso termine en el back antes de recargar la vista
             setTimeout(async () => {
                 await recargarDashboard();
             }, 5000);
-            
         } catch (error) {
             console.error("Error al sincronizar", error);
             alert("Hubo un error al intentar sincronizar.");
@@ -119,21 +117,19 @@ export function useDashboard() {
         recargarDashboard();
     };
 
-    const dispositivosMonitoreo = ref([]);
-
     const cargarMonitoreo = async () => {
-    cargando.value = true;
-    try {
-        const params = { 
-            proyecto: filtros.proyecto || null,
-            fecha_inicio: filtros.fechaInicio || null,
-            fecha_fin: filtros.fechaFin || null
-        };
-        const { data } = await admiraApi.get('/monitoreo/status', { params });
-        dispositivosMonitoreo.value = data;
-    } catch (error) {
+        cargando.value = true;
+        try {
+            const params = { 
+                proyecto: filtros.proyecto || null,
+                fecha_inicio: filtros.fechaInicio || null,
+                fecha_fin: filtros.fechaFin || null
+            };
+            const { data } = await admiraApi.get('/monitoreo/status', { params });
+            dispositivosMonitoreo.value = data;
+        } catch (error) {
             console.error("Error en monitoreo", error);
-    } finally {
+        } finally {
             cargando.value = false;
         }
     };
@@ -146,6 +142,7 @@ export function useDashboard() {
         datosGraficas,
         cargando,
         dispositivosMonitoreo,
+        menuMovilAbierto, // <-- RETORNAMOS LA VARIABLE
         cargarConfiguracion,
         recargarDashboard,
         cargarTabla,

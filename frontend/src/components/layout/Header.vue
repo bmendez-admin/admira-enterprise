@@ -1,11 +1,10 @@
 <script setup>
-import { Calendar, RefreshCcw, Database } from 'lucide-vue-next';
+import { Calendar, RefreshCcw, Database, Menu } from 'lucide-vue-next';
 import { useDashboard } from '../../composables/useDashboard';
 import {VueDatePicker} from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 
-
-const { filtros, cargando, recargarDashboard, sincronizarBaseDeDatos, resetFiltros } = useDashboard();
+const { filtros, cargando, recargarDashboard, sincronizarBaseDeDatos, resetFiltros, menuMovilAbierto } = useDashboard();
 
 const actualizarFechas = async () => {
     filtros.pagina = 1; 
@@ -14,34 +13,41 @@ const actualizarFechas = async () => {
 </script>
 
 <template>
-  <header class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative z-50">
+  <header class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 md:mb-8 gap-4 bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm relative z-40 w-full">
     
-    <div>
-      <div class="flex items-center gap-2 mb-1.5">
-        <span class="relative flex h-2 w-2">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-admira-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-2 w-2 bg-admira-500"></span>
-        </span>
-        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Sistema Operativo</p>
-      </div>
-      <h2 class="text-2xl font-extrabold text-slate-800 tracking-tight">Centro de Control</h2>
-      
-      <div class="flex items-center gap-2 mt-2">
-        <span class="text-sm text-slate-500">Proyecto:</span>
-        <span class="px-2.5 py-0.5 rounded-md bg-admira-50 text-admira-600 text-xs font-bold uppercase border border-admira-100">
-          {{ filtros.proyecto || 'Global' }}
-        </span>
-        <span v-if="filtros.estado" class="px-2.5 py-0.5 rounded-md bg-rose-50 text-rose-700 text-xs font-bold uppercase border border-rose-100">
-          Filtro: Caídos
-        </span>
+    <div class="flex items-center gap-4 w-full md:w-auto">
+      <button 
+        @click="menuMovilAbierto = true" 
+        class="md:hidden p-2 -ml-2 text-slate-500 hover:text-admira-600 transition-colors"
+      >
+        <Menu class="w-6 h-6" />
+      </button>
+
+      <div>
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-admira-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-admira-500"></span>
+          </span>
+          <p class="text-[11px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Sistema Operativo</p>
+        </div>
+        <h2 class="text-xl md:text-2xl font-extrabold text-slate-800 tracking-tight">Centro de Control</h2>
+        
+        <div class="flex flex-wrap items-center gap-2 mt-2">
+          <span class="text-xs md:text-sm text-slate-500 hidden sm:inline">Proyecto:</span>
+          <span class="px-2.5 py-0.5 rounded-md bg-admira-50 text-admira-600 text-[10px] md:text-xs font-bold uppercase border border-admira-100">
+            {{ filtros.proyecto || 'Global' }}
+          </span>
+          <span v-if="filtros.estado" class="px-2.5 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[10px] md:text-xs font-bold uppercase border border-rose-100">
+            Filtro: Caídos
+          </span>
+        </div>
       </div>
     </div>
     
-    <div class="flex items-center gap-3">
-      
-      <div class="flex items-center bg-slate-50 border border-gray-200 rounded-xl px-4 py-2 hover:bg-white hover:border-admira-300 transition-all shadow-sm h-[42px]">
-          <Calendar class="w-4 h-4 text-admira-500 mr-2" />
-          
+    <div class="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto mt-2 md:mt-0">
+      <div class="flex flex-1 md:flex-none items-center bg-slate-50 border border-gray-200 rounded-xl px-4 py-2 hover:bg-white hover:border-admira-300 transition-all shadow-sm h-[42px] min-w-[240px]">
+          <Calendar class="w-4 h-4 text-admira-500 mr-2 shrink-0" />
           <VueDatePicker 
               v-model="filtros.fechaInicio" 
               model-type="yyyy-MM-dd"
@@ -51,14 +57,12 @@ const actualizarFechas = async () => {
               @update:model-value="actualizarFechas"
           >
               <template #trigger>
-                  <button class="text-xs font-bold text-slate-700 hover:text-admira-600 transition-colors outline-none tracking-wide">
+                  <button class="text-xs font-bold text-slate-700 hover:text-admira-600 transition-colors outline-none tracking-wide w-full text-left">
                       {{ filtros.fechaInicio }}
                   </button>
               </template>
           </VueDatePicker>
-
-          <span class="text-slate-300 mx-3 text-[10px]">➜</span>
-
+          <span class="text-slate-300 mx-2 text-[10px]">➜</span>
           <VueDatePicker 
               v-model="filtros.fechaFin" 
               model-type="yyyy-MM-dd"
@@ -68,7 +72,7 @@ const actualizarFechas = async () => {
               @update:model-value="actualizarFechas"
           >
               <template #trigger>
-                  <button class="text-xs font-bold text-slate-700 hover:text-admira-600 transition-colors outline-none tracking-wide">
+                  <button class="text-xs font-bold text-slate-700 hover:text-admira-600 transition-colors outline-none tracking-wide w-full text-left">
                       {{ filtros.fechaFin }}
                   </button>
               </template>
@@ -77,7 +81,7 @@ const actualizarFechas = async () => {
       
       <button 
         @click="resetFiltros"
-        class="p-2.5 bg-white border border-gray-200 rounded-xl text-slate-500 hover:text-admira-600 hover:border-admira-300 hover:bg-admira-50 transition-all shadow-sm active:scale-95 flex items-center justify-center h-[42px] w-[42px]"
+        class="p-2.5 bg-white border border-gray-200 rounded-xl text-slate-500 hover:text-admira-600 hover:border-admira-300 hover:bg-admira-50 transition-all shadow-sm active:scale-95 flex items-center justify-center h-[42px] w-[42px] shrink-0"
         title="Restaurar a fechas por defecto"
         :disabled="cargando"
       >
@@ -86,26 +90,24 @@ const actualizarFechas = async () => {
       
       <button 
         @click="sincronizarBaseDeDatos" 
-        class="px-4 py-2 bg-admira-500 text-white rounded-xl font-bold text-xs hover:bg-admira-600 transition-colors shadow-sm shadow-admira-500/30 flex items-center gap-2 disabled:opacity-50 active:scale-95 h-[42px]"
+        class="px-4 py-2 bg-admira-500 text-white rounded-xl font-bold text-xs hover:bg-admira-600 transition-colors shadow-sm shadow-admira-500/30 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 h-[42px] flex-1 md:flex-none whitespace-nowrap"
         title="Forzar lectura de nuevos Excels"
         :disabled="cargando"
       >
         <Database class="w-4 h-4" :class="{ 'animate-pulse': cargando }" />
         Sincronizar
       </button>
-
     </div>
   </header>
 </template>
 
 <style>
-/* Variables CSS de VueDatePicker alineadas al Verde ADMIRA */
 .dp__theme_light {
    --dp-background-color: #ffffff;
    --dp-text-color: #1e293b;
-   --dp-hover-color: #e5eedd; /* admira-100 */
-   --dp-hover-text-color: #507731; /* admira-600 */
-   --dp-primary-color: #689840; /* admira-500 */
+   --dp-hover-color: #e5eedd;
+   --dp-hover-text-color: #507731;
+   --dp-primary-color: #689840;
    --dp-primary-text-color: #ffffff;
    --dp-secondary-color: #94a3b8;
    --dp-border-color: #e2e8f0;

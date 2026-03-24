@@ -21,7 +21,8 @@ import { useToastStore } from './stores/toast';
 const authStore = useAuthStore(pinia);
 const toastStore = useToastStore(pinia);
 
-// 2. Configuración de Axios
-axios.defaults.baseURL = 'http://127.0.0.1:8000';
+// 2. SOLUCIÓN NUCLEAR: Configuración de Axios FORZADA
+// Ignoramos el .env y clavamos la URL de Cloudflare directamente
+axios.defaults.baseURL = 'https://dictionaries-substance-zealand-spare.trycloudflare.com/api';
 
 app.mount('#app');

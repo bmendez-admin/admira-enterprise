@@ -9,6 +9,7 @@ const authStore = useAuthStore();
 const toastStore = useToastStore();
 const usuarioActual = computed(() => authStore.usuario || {});
 
+// CONTROL DE PERMISOS INTERNO
 const esAdmin = computed(() => {
   const rol = usuarioActual.value.rol?.toUpperCase();
   return rol === 'ADMIN' || rol === 'DIRECTIVO';
@@ -239,7 +240,7 @@ onMounted(() => {
       <p class="text-slate-500 text-sm md:text-base mt-2">Administra tus credenciales y accesos de equipo en la plataforma.</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-stretch">
+    <div :class="['grid gap-6 md:gap-8 items-stretch', esAdmin ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 max-w-3xl mx-auto']">
       
       <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col h-full min-w-0">
         <div class="bg-slate-50 px-6 md:px-8 py-5 flex items-center gap-4 border-b border-slate-200">

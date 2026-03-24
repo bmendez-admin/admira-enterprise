@@ -8,4 +8,9 @@ export default defineConfig({
     vue(),
     tailwindcss(),
   ],
+  // El server va AFUERA de los plugins
+  server: {
+    host: true,
+    allowedHosts: true,
+  }
 })

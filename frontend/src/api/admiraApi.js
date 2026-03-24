@@ -5,7 +5,11 @@ import { useToastStore } from '../stores/toast';
 
 // 1. EL ARREGLO ESTÁ AQUÍ: Añadimos /api a la URL base
 const admiraApi = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api'
+    // SOLUCIÓN NUCLEAR PARTE 2
+    baseURL: 'https://dictionaries-substance-zealand-spare.trycloudflare.com/api',
+    headers: {
+        'Bypass-Tunnel-Reminder': 'true' // Por si acaso usas Localtunnel de nuevo
+    }
 });
 
 // 2. INTERCEPTOR DE PETICIÓN

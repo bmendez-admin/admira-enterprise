@@ -6,7 +6,7 @@ import { useToastStore } from '../stores/toast';
 // 1. EL ARREGLO ESTÁ AQUÍ: Añadimos /api a la URL base
 const admiraApi = axios.create({
     // SOLUCIÓN NUCLEAR PARTE 2
-    baseURL: 'https://dictionaries-substance-zealand-spare.trycloudflare.com/api',
+    baseURL: import.meta.env.VITE_API_URL,
     headers: {
         'Bypass-Tunnel-Reminder': 'true' // Por si acaso usas Localtunnel de nuevo
     }

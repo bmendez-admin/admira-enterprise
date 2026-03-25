@@ -23,6 +23,6 @@ const toastStore = useToastStore(pinia);
 
 // 2. SOLUCIÓN NUCLEAR: Configuración de Axios FORZADA
 // Ignoramos el .env y clavamos la URL de Cloudflare directamente
-axios.defaults.baseURL = 'https://dictionaries-substance-zealand-spare.trycloudflare.com/api';
+axios.defaults.baseURL = import.meta.env.VITE_API_URL;
 
 app.mount('#app');

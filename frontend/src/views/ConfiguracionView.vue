@@ -44,7 +44,7 @@ const formNuevoUsuario = ref({
 
 const cargarUsuarios = async () => {
   try {
-    const response = await axios.get('/api/usuarios', {
+    const response = await axios.get('/usuarios', {
       headers: { Authorization: `Bearer ${authStore.token}` }
     });
     listaUsuarios.value = response.data;
@@ -55,7 +55,7 @@ const cargarUsuarios = async () => {
 
 const toggleEstatus = async (user) => {
   try {
-    await axios.put(`/api/usuarios/${user.id}`, {
+    await axios.put(`/usuarios/${user.id}`, {
       activo: !user.activo
     }, {
       headers: { Authorization: `Bearer ${authStore.token}` }
@@ -81,7 +81,7 @@ const cambiarPassword = async () => {
   }
 
   try {
-    await axios.put('/api/usuarios/password', {
+    await axios.put('/usuarios/password', {
       password_actual: formPassword.value.actual,
       password_nueva: formPassword.value.nueva
     }, {
@@ -110,7 +110,7 @@ const crearUsuario = async () => {
   }
 
   try {
-    await axios.post('/api/usuarios', {
+    await axios.post('/usuarios', {
       nombre_completo: formNuevoUsuario.value.nombre,
       email: formNuevoUsuario.value.email,
       password: formNuevoUsuario.value.password,
@@ -150,7 +150,7 @@ const prepararEdicion = (user) => {
 
 const guardarEdicionUsuario = async () => {
   try {
-    await axios.patch(`/api/usuarios/${usuarioEditando.value.id}`, {
+    await axios.patch(`/usuarios/${usuarioEditando.value.id}`, {
       nombre_completo: usuarioEditando.value.nombre_completo,
       rol: usuarioEditando.value.rol,
     }, {
@@ -201,7 +201,7 @@ const cerrarModal = () => {
 const cargarEstadisticas = async () => {
   if (esAdmin.value) {
     try {
-      const respuesta = await axios.get('/api/usuarios/estadisticas', {
+      const respuesta = await axios.get('/usuarios/estadisticas', {
         headers: { Authorization: `Bearer ${authStore.token}` }
       });
       estadisticasUsuarios.value = respuesta.data;
@@ -213,7 +213,7 @@ const cargarEstadisticas = async () => {
 
 const guardarCambios = async () => {
   try {
-    await axios.put('/api/usuarios/perfil', { nombre: formPerfil.value.nombre }, {
+    await axios.put('/usuarios/perfil', { nombre: formPerfil.value.nombre }, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     });
     authStore.usuario.nombre = formPerfil.value.nombre;

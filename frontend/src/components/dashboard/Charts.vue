@@ -4,23 +4,37 @@ import { useDashboard } from '../../composables/useDashboard';
 
 const { datosGraficas, kpis } = useDashboard();
 
-const barOptions = computed(() => ({
-  chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
-  colors: ['#EF4444'], 
-  plotOptions: { 
-      bar: { borderRadius: 4, horizontal: false, columnWidth: '45%', distributed: false } 
-  },
-  xaxis: { 
-      categories: datosGraficas.value.barras.categorias,
-      labels: { style: { fontSize: '10px', fontWeight: 500 } } // Reducimos levemente el texto base
-  },
-  grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
-  dataLabels: { enabled: false },
-  tooltip: { 
-      theme: 'light',
-      y: { formatter: (val) => `${val} Equipos` } 
-  }
-}));
+const barOptions = computed(() => {
+  // Calculamos un límite superior limpio para la gráfica (mínimo 1 para no romper la gráfica si está vacía)
+  const maxPlayers = kpis.value.uniquePlayers > 0 ? kpis.value.uniquePlayers : 1;
+  const tickAmount = maxPlayers < 5 ? maxPlayers : 5; // Mostrar saltos enteros lógicos
+
+  return {
+    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
+    colors: ['#EF4444'], 
+    plotOptions: { 
+        bar: { borderRadius: 4, horizontal: false, columnWidth: '45%', distributed: false } 
+    },
+    xaxis: { 
+        categories: datosGraficas.value.barras.categorias,
+        labels: { style: { fontSize: '10px', fontWeight: 500 } } 
+    },
+    // NUEVO: Limitamos el eje Y con el total de inventario y forzamos enteros
+    yaxis: {
+        max: maxPlayers,
+        tickAmount: tickAmount,
+        labels: {
+            formatter: (val) => Math.floor(val)
+        }
+    },
+    grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
+    dataLabels: { enabled: false },
+    tooltip: { 
+        theme: 'light',
+        y: { formatter: (val) => `${val} Equipos` } 
+    }
+  };
+});
 
 const barSeries = computed(() => [
   { name: 'Equipos Caídos', data: datosGraficas.value.barras.series }
@@ -29,7 +43,7 @@ const barSeries = computed(() => [
 const pieOptions = computed(() => ({
     labels: ['Conectados', 'Desconectados'],
     colors: ['#689840', '#F59E0B'], 
-    legend: { position: 'bottom', fontSize: '11px' }, // Leyenda un poco más ajustada
+    legend: { position: 'bottom', fontSize: '11px' }, 
     dataLabels: { enabled: false },
     plotOptions: { 
         pie: { 
@@ -42,7 +56,7 @@ const pieOptions = computed(() => ({
                     total: { 
                         show: true, 
                         showAlways: true,
-                        label: 'Total', // Etiqueta más corta para móvil
+                        label: 'Total', 
                         fontSize: '11px', 
                         fontWeight: 600,
                         color: '#64748b',

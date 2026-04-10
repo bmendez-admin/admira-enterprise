@@ -8,6 +8,10 @@ import { useDashboard } from '../composables/useDashboard';
 
 const { kpis, filtros, resetFiltros, datosTabla, recargarDashboard } = useDashboard();
 
+onMounted(async () => {
+  await iniciarDashboard();
+});
+
 const exportarCSV = () => {
   if (!datosTabla.value.items.length) return alert("No hay datos");
   const headers = ['FECHA', 'HORA', 'PLAYER', 'ESTADO', 'PROYECTO'];

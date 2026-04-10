@@ -11,13 +11,16 @@ const filtros = reactive({
     filasPorPagina: 10
 });
 
-const menuMovilAbierto = ref(false); // <-- NUESTRO CONTROLADOR MÓVIL
+const menuMovilAbierto = ref(false); 
 const configInicial = ref({ proyectos: [], fecha_inicio_sugerida: '', fecha_fin_sugerida: '' });
 const kpis = ref({ uptime: 0, off: 0, uniquePlayers: 0, totalRegistros: 0, crit: 0 });
 const datosTabla = ref({ items: [], total_registros: 0, total_paginas: 1, pagina_actual: 1 });
 const datosGraficas = ref({ barras: { categorias: [], series: [] } });
 const cargando = ref(false);
 const dispositivosMonitoreo = ref([]);
+
+// NUEVO: Bandera para saber si ya tenemos las fechas por defecto
+const configuracionLista = ref(false);
 
 export function useDashboard() {
     
@@ -30,8 +33,10 @@ export function useDashboard() {
                 filtros.fechaInicio = data.fecha_inicio_sugerida;
                 filtros.fechaFin = data.fecha_fin_sugerida;
             }
+            configuracionLista.value = true; // Avisamos que las fechas ya están listas
         } catch (error) {
             console.error("Error cargando configuración", error);
+            configuracionLista.value = true; // Para no bloquear la app si falla
         }
     };
 
@@ -108,6 +113,14 @@ export function useDashboard() {
         cargando.value = false;
     };
 
+    // NUEVO: Función de arranque coordinado (Evita la carrera de tiempo)
+    const iniciarDashboard = async () => {
+        if (!configuracionLista.value) {
+            await cargarConfiguracion(); // Primero obligamos a obtener las fechas
+        }
+        await recargarDashboard(); // Luego ya pintamos lo demás
+    };
+
     const resetFiltros = () => {
         filtros.proyecto = '';
         filtros.estado = '';
@@ -142,9 +155,11 @@ export function useDashboard() {
         datosGraficas,
         cargando,
         dispositivosMonitoreo,
-        menuMovilAbierto, // <-- RETORNAMOS LA VARIABLE
+        menuMovilAbierto,
+        configuracionLista, // Exportamos para que los componentes sepan si ya está listo
         cargarConfiguracion,
         recargarDashboard,
+        iniciarDashboard, // Exportamos la nueva función maestra
         cargarTabla,
         resetFiltros,
         sincronizarBaseDeDatos,

@@ -6,7 +6,6 @@ const { datosGraficas, kpis } = useDashboard();
 
 const barOptions = computed(() => {
   const maxPlayers = kpis.value.uniquePlayers > 0 ? kpis.value.uniquePlayers : 1;
-  const tickAmount = maxPlayers < 5 ? maxPlayers : 5; 
 
   return {
     chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
@@ -18,22 +17,18 @@ const barOptions = computed(() => {
         categories: datosGraficas.value.barras.categorias,
         labels: { style: { fontSize: '10px', fontWeight: 500 } } 
     },
-    // AQUÍ ESTÁ LA MAGIA DEFINITIVA
     yaxis: {
-        min: 0, // Siempre empezar en cero
-        max: maxPlayers, // El tope siempre será el inventario
-        tickAmount: tickAmount, 
-        decimalsInFloat: 0, // 🔴 Cero decimales permitidos
-        forceNiceScale: false, // 🔴 Apagamos la auto-escala rebelde de ApexCharts
+        min: 0,
+        max: maxPlayers,
         labels: {
-            formatter: (val) => Math.round(val) // Forzamos redondeo final
+            formatter: (val) => Math.floor(val)
         }
     },
     grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
     dataLabels: { enabled: false },
     tooltip: { 
         theme: 'light',
-        y: { formatter: (val) => `${Math.round(val)} Equipos` } 
+        y: { formatter: (val) => `${Math.floor(val)} Equipos` } 
     }
   };
 });

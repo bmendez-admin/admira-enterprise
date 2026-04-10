@@ -5,9 +5,8 @@ import { useDashboard } from '../../composables/useDashboard';
 const { datosGraficas, kpis } = useDashboard();
 
 const barOptions = computed(() => {
-  // Calculamos un límite superior limpio para la gráfica (mínimo 1 para no romper la gráfica si está vacía)
   const maxPlayers = kpis.value.uniquePlayers > 0 ? kpis.value.uniquePlayers : 1;
-  const tickAmount = maxPlayers < 5 ? maxPlayers : 5; // Mostrar saltos enteros lógicos
+  const tickAmount = maxPlayers < 5 ? maxPlayers : 5; 
 
   return {
     chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
@@ -19,19 +18,22 @@ const barOptions = computed(() => {
         categories: datosGraficas.value.barras.categorias,
         labels: { style: { fontSize: '10px', fontWeight: 500 } } 
     },
-    // NUEVO: Limitamos el eje Y con el total de inventario y forzamos enteros
+    // AQUÍ ESTÁ LA MAGIA DEFINITIVA
     yaxis: {
-        max: maxPlayers,
-        tickAmount: tickAmount,
+        min: 0, // Siempre empezar en cero
+        max: maxPlayers, // El tope siempre será el inventario
+        tickAmount: tickAmount, 
+        decimalsInFloat: 0, // 🔴 Cero decimales permitidos
+        forceNiceScale: false, // 🔴 Apagamos la auto-escala rebelde de ApexCharts
         labels: {
-            formatter: (val) => Math.floor(val)
+            formatter: (val) => Math.round(val) // Forzamos redondeo final
         }
     },
     grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
     dataLabels: { enabled: false },
     tooltip: { 
         theme: 'light',
-        y: { formatter: (val) => `${val} Equipos` } 
+        y: { formatter: (val) => `${Math.round(val)} Equipos` } 
     }
   };
 });

@@ -6,7 +6,7 @@ import Charts from '../components/dashboard/Charts.vue';
 import Bitacora from '../components/dashboard/Bitacora.vue';
 import { useDashboard } from '../composables/useDashboard';
 
-const { kpis, filtros, resetFiltros, datosTabla, recargarDashboard } = useDashboard();
+const { kpis, filtros, resetFiltros, datosTabla, recargarDashboard, iniciarDashboard } = useDashboard();
 
 onMounted(async () => {
   await iniciarDashboard();

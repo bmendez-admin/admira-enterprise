@@ -226,7 +226,7 @@ const exportarExcelProfesional = () => {
                         </div>
                         <button @click="mostrarSoloInestables = !mostrarSoloInestables"
                             :class="`w-full sm:w-auto px-6 py-3 rounded-2xl font-bold text-[10px] transition-all border ${mostrarSoloInestables ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm shadow-rose-100' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`">
-                            Solo Críticos (< 100%) </button>
+                            "Solo Críticos (menor a 100%) </button>
                     </div>
 
                     <div class="overflow-x-auto flex-1">

@@ -144,7 +144,7 @@ const exportarExcelProfesional = () => {
                 </button>
                 <button @click="exportarExcelProfesional"
                     class="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-200 active:scale-95 transition-all">
-                    <FileSpreadsheet class="w-4 h-4" /> Exportar Excel
+                    <FileSpreadsheet class="w-4 h-4" /> Exportar Excel ahora
                 </button>
             </div>
         </div>

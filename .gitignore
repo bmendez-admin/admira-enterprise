@@ -1,19 +1,47 @@
-# Node / Frontend
-node_modules/
-dist/
-npm-debug.log
+# ==========================================
+# SECRETOS — NUNCA COMMITEAR
+# ==========================================
+.env
+.env.local
+.env.production
+.env.*.local
+backend/app/.env
+frontend/.env
 
-# Python / Backend
+# ==========================================
+# PYTHON
+# ==========================================
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+.venv/
 venv/
 env/
-.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
 
-# Bases de datos locales
-*.sqlite3
-*.db
+# ==========================================
+# NODE / FRONTEND
+# ==========================================
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
 
-# Sistema Operativo
+# ==========================================
+# SISTEMA OPERATIVO
+# ==========================================
 .DS_Store
 Thumbs.db
+*.lnk
+
+# ==========================================
+# EDITORES
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo

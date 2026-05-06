@@ -8,70 +8,134 @@ import math
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from passlib.context import CryptContext
-import jwt
-from fastapi import FastAPI, Depends, Query, BackgroundTasks, HTTPException, status
+from jose import JWTError, jwt
+from fastapi import FastAPI, Depends, Query, BackgroundTasks, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, not_, or_
 from apscheduler.schedulers.background import BackgroundScheduler
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 import models
 from database import engine, get_db
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "admira_secreto_super_seguro_2026")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY no está definida en las variables de entorno")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 models.Base.metadata.create_all(bind=engine)
-app = FastAPI(title="ADMIRA Enterprise API")
+
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(title="ADMIRA Enterprise API", version="1.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "https://admira-enterprise.vercel.app,http://localhost:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://admira-enterprise.vercel.app", "http://localhost:5173"], 
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class LoginRequest(BaseModel): email: str; password: str
+# ==========================================
+# MODELOS DE SOLICITUD
+# ==========================================
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 # ==========================================
 # AUTH Y SEGURIDAD
 # ==========================================
-def verificar_password(plain_password, hashed_password): return pwd_context.verify(plain_password, hashed_password)
+def verificar_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
 
 def crear_token_acceso(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=15))
-    to_encode.update({"exp": expire})
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire, "type": "access"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def crear_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def obtener_usuario_actual(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Token inválido")
         email: str = payload.get("sub")
-        if email is None: raise HTTPException(status_code=401, detail="Token inválido")
-    except Exception: raise HTTPException(status_code=401, detail="Token expirado o inválido")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token expirado o inválido")
     usuario = db.query(models.Usuario).filter(models.Usuario.email == email).first()
-    if usuario is None: raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    if usuario is None:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return usuario
 
 def requerir_roles(roles_permitidos: List[str]):
     def verificador_de_rol(usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
-        if usuario_actual.rol.upper() not in roles_permitidos: raise HTTPException(status_code=403, detail="Operación no permitida")
+        if usuario_actual.rol.upper() not in roles_permitidos:
+            raise HTTPException(status_code=403, detail="Operación no permitida")
         return usuario_actual
     return verificador_de_rol
 
 def aplicar_filtro_cliente(usuario: models.Usuario, proyecto_solicitado: Optional[str] = None):
-    if usuario.rol.upper() == 'CLIENTE': return usuario.email.split('@')[1].split('.')[0].upper()
+    if usuario.rol.upper() == 'CLIENTE':
+        return usuario.email.split('@')[1].split('.')[0].upper()
     return proyecto_solicitado
+
+# ==========================================
+# ALIAS DE PROYECTOS CENTRALIZADO
+# ==========================================
+PROJECT_ALIASES = {
+    "SUSUKY": "SUZUKY",
+}
+
+def normalizar_proyecto(nombre: str) -> str:
+    if not nombre:
+        return nombre
+    upper = nombre.upper()
+    return PROJECT_ALIASES.get(upper, upper)
+
+def aplicar_filtro_proyecto(query, modelo_columna, proyecto_str):
+    if not proyecto_str or proyecto_str == "Todos los Proyectos":
+        return query
+    upper = proyecto_str.upper()
+    # Buscar si hay alias inversos (SUZUKY debe encontrar también SUSUKY)
+    aliases_inversos = [k for k, v in PROJECT_ALIASES.items() if v == upper]
+    if aliases_inversos:
+        conditions = [modelo_columna.ilike(f"%{upper}%")]
+        for alias in aliases_inversos:
+            conditions.append(modelo_columna.ilike(f"%{alias}%"))
+        return query.filter(or_(*conditions))
+    return query.filter(modelo_columna.ilike(f"%{proyecto_str}%"))
 
 # ==========================================
 # ETL AUTOMÁTICO
@@ -79,32 +143,29 @@ def aplicar_filtro_cliente(usuario: models.Usuario, proyecto_solicitado: Optiona
 def ejecutar_etl():
     try:
         ruta_etl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "etl.py")
-        subprocess.run([sys.executable, ruta_etl], check=True)
-    except Exception as e: print(f"Error ETL: {e}")
+        subprocess.run([sys.executable, ruta_etl], check=True, timeout=300)
+    except Exception as e:
+        print(f"Error ETL: {e}")
 
 @app.on_event("startup")
 def iniciar_tareas_programadas():
     scheduler = BackgroundScheduler()
-    for hora in [9, 12, 13, 15, 17, 18]: scheduler.add_job(ejecutar_etl, 'cron', hour=hora, minute=15)
+    for hora in [9, 12, 13, 15, 17, 18]:
+        scheduler.add_job(ejecutar_etl, 'cron', hour=hora, minute=15)
     scheduler.start()
 
 @app.post("/api/sincronizar")
-def sincronizar_manual(background_tasks: BackgroundTasks, usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO", "SOPORTE"]))):
+def sincronizar_manual(
+    background_tasks: BackgroundTasks,
+    usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO", "SOPORTE"]))
+):
     background_tasks.add_task(ejecutar_etl)
     return {"mensaje": "Sincronización iniciada"}
 
 # ==========================================
-# REGLAS GLOBALES Y FILTROS CORE
+# REGLAS GLOBALES
 # ==========================================
 REGLA_LIVERPOOL = not_(and_(models.Reporte.proyecto.ilike("%LIVERPOOL%"), models.Reporte.hora_numerica == 9))
-
-# FUNCIÓN MAESTRA DE ALIAS: Fusiona SUSUKY con SUZUKY en las búsquedas SQL
-def aplicar_filtro_proyecto(query, modelo_columna, proyecto_str):
-    if not proyecto_str or proyecto_str == "Todos los Proyectos": 
-        return query
-    if proyecto_str.upper() in ["SUZUKY", "SUSUKY"]:
-        return query.filter(or_(modelo_columna.ilike("%SUZUKY%"), modelo_columna.ilike("%SUSUKY%")))
-    return query.filter(modelo_columna.ilike(f"%{proyecto_str}%"))
 
 def get_ventana_vigencia(db: Session, proyecto: Optional[str] = None):
     query_fechas = db.query(models.Reporte.fecha).distinct()
@@ -115,49 +176,98 @@ def get_ventana_vigencia(db: Session, proyecto: Optional[str] = None):
 def obtener_inventario_activo(db: Session):
     ultimos_5_archivos = db.query(models.Reporte.fecha, models.Reporte.hora_numerica)\
         .distinct().order_by(models.Reporte.fecha.desc(), models.Reporte.hora_numerica.desc()).limit(5).all()
-    if not ultimos_5_archivos: return None
+    if not ultimos_5_archivos:
+        return None
     filtros_or = or_(*[and_(models.Reporte.fecha == f, models.Reporte.hora_numerica == h) for f, h in ultimos_5_archivos])
     return db.query(models.Reporte.player).filter(filtros_or).distinct().subquery()
 
 # ==========================================
-# ENDPOINTS PRINCIPALES
+# ENDPOINTS DE AUTENTICACIÓN
 # ==========================================
 @app.post("/api/login")
-def iniciar_sesion(credenciales: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def iniciar_sesion(request: Request, credenciales: LoginRequest, db: Session = Depends(get_db)):
     usuario = db.query(models.Usuario).filter(models.Usuario.email == credenciales.email).first()
-    if not usuario or not verificar_password(credenciales.password, usuario.password_hash): raise HTTPException(status_code=401, detail="Error")
-    if not usuario.activo: raise HTTPException(status_code=400, detail="Inactivo")
+    if not usuario or not verificar_password(credenciales.password, usuario.password_hash):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    if not usuario.activo:
+        raise HTTPException(status_code=400, detail="Usuario inactivo")
     datos_token = {"sub": usuario.email, "rol": usuario.rol, "nombre": usuario.nombre_completo, "id": usuario.id}
-    return {"access_token": crear_token_acceso(datos_token, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)), "token_type": "bearer", "usuario": datos_token}
+    return {
+        "access_token": crear_token_acceso(datos_token, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)),
+        "refresh_token": crear_refresh_token({"sub": usuario.email}),
+        "token_type": "bearer",
+        "usuario": datos_token
+    }
 
+@app.post("/api/auth/refresh")
+def refrescar_token(body: RefreshRequest, db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(body.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Token inválido")
+        email: str = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Refresh token expirado o inválido")
+    usuario = db.query(models.Usuario).filter(models.Usuario.email == email).first()
+    if not usuario or not usuario.activo:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    datos_token = {"sub": usuario.email, "rol": usuario.rol, "nombre": usuario.nombre_completo, "id": usuario.id}
+    return {
+        "access_token": crear_token_acceso(datos_token, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)),
+        "refresh_token": crear_refresh_token({"sub": usuario.email}),
+        "token_type": "bearer"
+    }
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+# ==========================================
+# ENDPOINTS PRINCIPALES
+# ==========================================
 @app.get("/api/configuracion")
 def obtener_configuracion_inicial(db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
-    if usuario_actual.rol.upper() == 'CLIENTE': 
-        return {"proyectos": [aplicar_filtro_cliente(usuario_actual)], "fecha_inicio_sugerida": date.today(), "fecha_fin_sugerida": date.today()}
-    
+    if usuario_actual.rol.upper() == 'CLIENTE':
+        return {
+            "proyectos": [aplicar_filtro_cliente(usuario_actual)],
+            "fecha_inicio_sugerida": date.today(),
+            "fecha_fin_sugerida": date.today()
+        }
+
     proyectos = db.query(models.Reporte.proyecto).distinct().all()
     proyectos_limpios = set()
     for p in proyectos:
         if p[0]:
-            nombre = "SUZUKY" if p[0].upper() == "SUSUKY" else p[0].upper()
-            proyectos_limpios.add(nombre)
+            proyectos_limpios.add(normalizar_proyecto(p[0]))
 
-    return {"proyectos": sorted(list(proyectos_limpios)), "fecha_inicio_sugerida": db.query(func.min(models.Reporte.fecha)).scalar(), "fecha_fin_sugerida": db.query(func.max(models.Reporte.fecha)).scalar()}
+    return {
+        "proyectos": sorted(list(proyectos_limpios)),
+        "fecha_inicio_sugerida": db.query(func.min(models.Reporte.fecha)).scalar(),
+        "fecha_fin_sugerida": db.query(func.max(models.Reporte.fecha)).scalar()
+    }
 
 @app.get("/api/kpis")
-def obtener_kpis(proyecto: Optional[str] = None, fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
+def obtener_kpis(
+    proyecto: Optional[str] = None,
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None,
+    db: Session = Depends(get_db),
+    usuario_actual: models.Usuario = Depends(obtener_usuario_actual)
+):
     proyecto_seguro = aplicar_filtro_cliente(usuario_actual, proyecto)
     subq_activos = obtener_inventario_activo(db)
     if subq_activos is None:
-        return {"uptime":0, "uniquePlayers":0, "proyectosActivos":0, "proyectosSLA":0, "dona_activos":0, "dona_caidos":0}
+        return {"uptime": 0, "uniquePlayers": 0, "proyectosActivos": 0, "proyectosSLA": 0, "dona_activos": 0, "dona_caidos": 0}
 
     query_base = db.query(models.Reporte).filter(models.Reporte.player.in_(subq_activos)).filter(REGLA_LIVERPOOL)
     query_base = aplicar_filtro_proyecto(query_base, models.Reporte.proyecto, proyecto_seguro)
-    if fecha_inicio and fecha_fin: query_base = query_base.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
+    if fecha_inicio and fecha_fin:
+        query_base = query_base.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
 
     unique_players = query_base.with_entities(func.count(func.distinct(models.Reporte.player))).scalar() or 0
     if unique_players == 0:
-        return {"uptime":0, "uniquePlayers":0, "proyectosActivos":0, "proyectosSLA":0, "dona_activos":0, "dona_caidos":0}
+        return {"uptime": 0, "uniquePlayers": 0, "proyectosActivos": 0, "proyectosSLA": 0, "dona_activos": 0, "dona_caidos": 0}
 
     total_registros = query_base.count()
     total_caidas = query_base.filter(models.Reporte.estado == 'Sin conexión').count()
@@ -169,41 +279,48 @@ def obtener_kpis(proyecto: Optional[str] = None, fecha_inicio: Optional[date] = 
         func.count(models.Reporte.id).filter(models.Reporte.estado == 'Sin conexión').label('caidas')
     ).group_by(models.Reporte.proyecto).all()
 
-    # FUSIÓN DE PROYECTOS PARA KPIs
     proyectos_dict = {}
     for p in stats_proyectos:
-        if not p.proyecto: continue
-        nombre_proy = "SUZUKY" if p.proyecto.upper() == "SUSUKY" else p.proyecto.upper()
+        if not p.proyecto:
+            continue
+        nombre_proy = normalizar_proyecto(p.proyecto)
         if nombre_proy not in proyectos_dict:
             proyectos_dict[nombre_proy] = {"total": 0, "caidas": 0}
         proyectos_dict[nombre_proy]["total"] += p.total
         proyectos_dict[nombre_proy]["caidas"] += p.caidas
 
     proyectos_activos = len(proyectos_dict)
-    proyectos_sla = 0
-    for data in proyectos_dict.values():
-        uptime_p = ((data["total"] - data["caidas"]) / data["total"]) if data["total"] > 0 else 0
-        if uptime_p >= 0.70: proyectos_sla += 1
+    proyectos_sla = sum(
+        1 for data in proyectos_dict.values()
+        if data["total"] > 0 and ((data["total"] - data["caidas"]) / data["total"]) >= 0.70
+    )
 
     return {
-        "uptime": round(porcentaje_uptime * 100, 1), 
-        "uniquePlayers": unique_players, 
-        "proyectosActivos": proyectos_activos, 
+        "uptime": round(porcentaje_uptime * 100, 1),
+        "uniquePlayers": unique_players,
+        "proyectosActivos": proyectos_activos,
         "proyectosSLA": proyectos_sla,
-        "dona_activos": round(unique_players * porcentaje_uptime), 
+        "dona_activos": round(unique_players * porcentaje_uptime),
         "dona_caidos": unique_players - round(unique_players * porcentaje_uptime)
     }
 
 @app.get("/api/graficas/barras")
-def obtener_datos_barras(proyecto: Optional[str] = None, fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
+def obtener_datos_barras(
+    proyecto: Optional[str] = None,
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None,
+    db: Session = Depends(get_db),
+    usuario_actual: models.Usuario = Depends(obtener_usuario_actual)
+):
     proyecto_seguro = aplicar_filtro_cliente(usuario_actual, proyecto)
     subq_activos = obtener_inventario_activo(db)
-    if subq_activos is None: return {"categorias": [], "series": []}
+    if subq_activos is None:
+        return {"categorias": [], "series": []}
 
-    # 1. Obtenemos el UNIVERSO TOTAL de registros por hora
     query_base = db.query(models.Reporte).filter(models.Reporte.player.in_(subq_activos)).filter(REGLA_LIVERPOOL)
     query_base = aplicar_filtro_proyecto(query_base, models.Reporte.proyecto, proyecto_seguro)
-    if fecha_inicio and fecha_fin: query_base = query_base.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
+    if fecha_inicio and fecha_fin:
+        query_base = query_base.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
 
     t9 = t1 = t3 = t5 = tOther = 0
     for h, c in query_base.with_entities(models.Reporte.hora_numerica, func.count(func.distinct(models.Reporte.player))).group_by(models.Reporte.hora_numerica).all():
@@ -213,9 +330,7 @@ def obtener_datos_barras(proyecto: Optional[str] = None, fecha_inicio: Optional[
         elif h == 17: t5 += c
         else: tOther += c
 
-    # 2. Obtenemos ÚNICAMENTE LOS CAÍDOS por hora
     query_caidos = query_base.filter(models.Reporte.estado == 'Sin conexión')
-    
     c9 = c1 = c3 = c5 = cOther = 0
     for h, c in query_caidos.with_entities(models.Reporte.hora_numerica, func.count(func.distinct(models.Reporte.player))).group_by(models.Reporte.hora_numerica).all():
         if h == 9: c9 += c
@@ -223,55 +338,76 @@ def obtener_datos_barras(proyecto: Optional[str] = None, fecha_inicio: Optional[
         elif h == 15: c3 += c
         elif h == 17: c5 += c
         else: cOther += c
-        
-    # 3. Calculamos el porcentaje INDIVIDUAL por cada franja
+
     def calc_uptime(total, caidos):
-        if total == 0: return 0 
+        if total == 0: return 0
         return round(((total - caidos) / total) * 100, 1)
 
     return {
-        "categorias": ['9:00 am', '12/1:00 pm', '3:00 pm', '5:00 pm', 'Otros'], 
+        "categorias": ['9:00 am', '12/1:00 pm', '3:00 pm', '5:00 pm', 'Otros'],
         "series": [calc_uptime(t9, c9), calc_uptime(t1, c1), calc_uptime(t3, c3), calc_uptime(t5, c5), calc_uptime(tOther, cOther)]
     }
 
 @app.get("/api/tabla")
-def obtener_tabla(proyecto: Optional[str] = None, fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, estado: Optional[str] = None, player: Optional[str] = None, pagina: int = Query(1), filas_por_pagina: int = Query(10), db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
+def obtener_tabla(
+    proyecto: Optional[str] = None,
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None,
+    estado: Optional[str] = None,
+    player: Optional[str] = None,
+    pagina: int = Query(1),
+    filas_por_pagina: int = Query(10),
+    db: Session = Depends(get_db),
+    usuario_actual: models.Usuario = Depends(obtener_usuario_actual)
+):
     proyecto_seguro = aplicar_filtro_cliente(usuario_actual, proyecto)
     try:
         subq_activos = obtener_inventario_activo(db)
-        if subq_activos is None: return {"total_registros": 0, "pagina_actual": 1, "total_paginas": 1, "items": []}
-        
+        if subq_activos is None:
+            return {"total_registros": 0, "pagina_actual": 1, "total_paginas": 1, "items": []}
+
         query = db.query(models.Reporte).filter(models.Reporte.player.in_(subq_activos)).filter(REGLA_LIVERPOOL)
         query = aplicar_filtro_proyecto(query, models.Reporte.proyecto, proyecto_seguro)
-        
-        if fecha_inicio and fecha_fin: query = query.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
-        if estado: query = query.filter(models.Reporte.estado == estado)
-        if player: query = query.filter(models.Reporte.player.ilike(f"%{player}%"))
-        
-        # 1. Obtenemos el total real
+
+        if fecha_inicio and fecha_fin:
+            query = query.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
+        if estado:
+            query = query.filter(models.Reporte.estado == estado)
+        if player:
+            query = query.filter(models.Reporte.player.ilike(f"%{player}%"))
+
         total = query.count()
-        
-        # 2. Calculamos las páginas reales
         total_paginas = math.ceil(total / filas_por_pagina) if total > 0 else 1
-        
-        # 3. Traemos solo los registros de esta página
-        registros = query.order_by(models.Reporte.fecha.desc(), models.Reporte.hora_numerica.desc()).offset((pagina-1)*filas_por_pagina).limit(filas_por_pagina).all()
-        
-        # 4. Retornamos las variables dinámicas (YA NO ESTÁN DUROS)
+        registros = query.order_by(models.Reporte.fecha.desc(), models.Reporte.hora_numerica.desc()).offset((pagina - 1) * filas_por_pagina).limit(filas_por_pagina).all()
+
         return {
-            "total_registros": total, 
-            "pagina_actual": pagina, 
+            "total_registros": total,
+            "pagina_actual": pagina,
             "total_paginas": total_paginas,
-            "items": [{"FECHA": r.fecha.isoformat() if r.fecha else "", "HORARIO_LEGIBLE": r.horario_legible, "PLAYER": r.player, "ESTADO": r.estado, "PROYECTO": "SUZUKY" if (r.proyecto and r.proyecto.upper() == "SUSUKY") else r.proyecto, "ARCHIVO_ORIGEN": r.archivo_origen or ""} for r in registros]
+            "items": [{
+                "FECHA": r.fecha.isoformat() if r.fecha else "",
+                "HORARIO_LEGIBLE": r.horario_legible,
+                "PLAYER": r.player,
+                "ESTADO": r.estado,
+                "PROYECTO": normalizar_proyecto(r.proyecto) if r.proyecto else r.proyecto,
+                "ARCHIVO_ORIGEN": r.archivo_origen or ""
+            } for r in registros]
         }
-    except Exception as e: 
+    except Exception as e:
         return {"total_registros": 0, "pagina_actual": 1, "total_paginas": 1, "items": [], "error": str(e)}
 
 @app.get("/api/graficas/tendencia")
-def obtener_tendencia(proyecto: Optional[str] = None, fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
+def obtener_tendencia(
+    proyecto: Optional[str] = None,
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None,
+    db: Session = Depends(get_db),
+    usuario_actual: models.Usuario = Depends(obtener_usuario_actual)
+):
     proyecto_seguro = aplicar_filtro_cliente(usuario_actual, proyecto)
     subq_activos = obtener_inventario_activo(db)
-    if subq_activos is None: return {"categorias": [], "series": []}
+    if subq_activos is None:
+        return {"categorias": [], "series": []}
 
     query = db.query(
         models.Reporte.fecha,
@@ -280,28 +416,36 @@ def obtener_tendencia(proyecto: Optional[str] = None, fecha_inicio: Optional[dat
     ).filter(models.Reporte.player.in_(subq_activos)).filter(REGLA_LIVERPOOL)
 
     query = aplicar_filtro_proyecto(query, models.Reporte.proyecto, proyecto_seguro)
-    if fecha_inicio and fecha_fin: 
+    if fecha_inicio and fecha_fin:
         query = query.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
 
     resultados = query.group_by(models.Reporte.fecha).order_by(models.Reporte.fecha.asc()).all()
 
     categorias, series = [], []
     for r in resultados:
-        if r.fecha is None: continue
+        if r.fecha is None:
+            continue
         uptime = round(((r.total - r.caidas) / r.total) * 100, 1) if r.total > 0 else 0
-        # Formato de fecha corto (Ej. "09 Abr")
         categorias.append(r.fecha.strftime("%d %b"))
         series.append(uptime)
 
     return {"categorias": categorias, "series": series}
 
 @app.get("/api/monitoreo/status")
-def obtener_estatus_monitoreo(proyecto: Optional[str] = None, fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
+def obtener_estatus_monitoreo(
+    proyecto: Optional[str] = None,
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None,
+    db: Session = Depends(get_db),
+    usuario_actual: models.Usuario = Depends(obtener_usuario_actual)
+):
     proyecto_seguro = aplicar_filtro_cliente(usuario_actual, proyecto)
     subq_activos = obtener_inventario_activo(db)
-    if subq_activos is None: return []
+    if subq_activos is None:
+        return []
     ventana = get_ventana_vigencia(db, proyecto_seguro)
-    if not ventana: return []
+    if not ventana:
+        return []
     query = db.query(models.Reporte).filter(models.Reporte.fecha == ventana[0]).filter(models.Reporte.player.in_(subq_activos))
     query = aplicar_filtro_proyecto(query, models.Reporte.proyecto, proyecto_seguro)
     subq = query.with_entities(models.Reporte.player, func.max(models.Reporte.hora_numerica).label('max_h')).group_by(models.Reporte.player).subquery()
@@ -309,45 +453,96 @@ def obtener_estatus_monitoreo(proyecto: Optional[str] = None, fecha_inicio: Opti
     vistos, resultado = set(), []
     for r in registros:
         if r.player not in vistos:
-            resultado.append({"player": r.player, "estado": r.estado, "proyecto": "SUZUKY" if (r.proyecto and r.proyecto.upper() == "SUSUKY") else r.proyecto, "ultima_conexion": f"{r.fecha} {r.horario_legible}", "alerta": r.estado == 'Sin conexión'})
+            resultado.append({
+                "player": r.player,
+                "estado": r.estado,
+                "proyecto": normalizar_proyecto(r.proyecto) if r.proyecto else r.proyecto,
+                "ultima_conexion": f"{r.fecha} {r.horario_legible}",
+                "alerta": r.estado == 'Sin conexión'
+            })
             vistos.add(r.player)
     return resultado
 
 @app.get("/api/reporte/consolidado")
-def obtener_reporte_consolidado(proyecto: Optional[str] = Query(None), fecha_inicio: Optional[date] = Query(None), fecha_fin: Optional[date] = Query(None), db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO"]))):
+def obtener_reporte_consolidado(
+    proyecto: Optional[str] = Query(None),
+    fecha_inicio: Optional[date] = Query(None),
+    fecha_fin: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO"]))
+):
     try:
         subq_activos = obtener_inventario_activo(db)
-        if subq_activos is None: return []
+        if subq_activos is None:
+            return []
         query = db.query(models.Reporte).filter(models.Reporte.player.in_(subq_activos)).filter(REGLA_LIVERPOOL)
         query = aplicar_filtro_proyecto(query, models.Reporte.proyecto, proyecto)
-        if fecha_inicio and fecha_fin: query = query.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
-            
+        if fecha_inicio and fecha_fin:
+            query = query.filter(models.Reporte.fecha.between(fecha_inicio, fecha_fin))
+
         registros = query.all()
-        if not registros: return []
+        if not registros:
+            return []
+
         datos_players = {}
         for r in registros:
             p = r.player
-            if p not in datos_players: 
-                nombre_p = "SUZUKY" if (r.proyecto and r.proyecto.upper() == "SUSUKY") else r.proyecto
-                datos_players[p] = {"proyecto": nombre_p, "total": 0, "caidas": 0, "ultima_fecha": r.fecha, "ultima_hora": r.hora_numerica, "ultimo_estado": r.estado, "horario_legible": r.horario_legible, "archivo_origen": r.archivo_origen}
+            if p not in datos_players:
+                datos_players[p] = {
+                    "proyecto": normalizar_proyecto(r.proyecto) if r.proyecto else r.proyecto,
+                    "total": 0, "caidas": 0,
+                    "ultima_fecha": r.fecha, "ultima_hora": r.hora_numerica,
+                    "ultimo_estado": r.estado, "horario_legible": r.horario_legible,
+                    "archivo_origen": r.archivo_origen
+                }
             datos_players[p]["total"] += 1
-            if r.estado == 'Sin conexión': datos_players[p]["caidas"] += 1
+            if r.estado == 'Sin conexión':
+                datos_players[p]["caidas"] += 1
             if r.fecha > datos_players[p]["ultima_fecha"] or (r.fecha == datos_players[p]["ultima_fecha"] and r.hora_numerica > datos_players[p]["ultima_hora"]):
-                datos_players[p].update({"ultima_fecha": r.fecha, "ultima_hora": r.hora_numerica, "ultimo_estado": r.estado, "horario_legible": r.horario_legible, "archivo_origen": r.archivo_origen})
+                datos_players[p].update({
+                    "ultima_fecha": r.fecha, "ultima_hora": r.hora_numerica,
+                    "ultimo_estado": r.estado, "horario_legible": r.horario_legible,
+                    "archivo_origen": r.archivo_origen
+                })
+
         resultado = []
         for player, data in datos_players.items():
             uptime = round(((data["total"] - data["caidas"]) / data["total"]) * 100, 1) if data["total"] > 0 else 0
-            resultado.append({"player": player, "proyecto": data["proyecto"], "total_reportes": data["total"], "caidas": data["caidas"], "uptime": uptime, "alerta": data["ultimo_estado"] == 'Sin conexión', "ultimo_estado": data["ultimo_estado"], "ultima_conexion": f"{data['ultima_fecha']} {data['horario_legible']}", "archivo_origen": data["archivo_origen"] or ""})
+            resultado.append({
+                "player": player,
+                "proyecto": data["proyecto"],
+                "total_reportes": data["total"],
+                "caidas": data["caidas"],
+                "uptime": uptime,
+                "alerta": data["ultimo_estado"] == 'Sin conexión',
+                "ultimo_estado": data["ultimo_estado"],
+                "ultima_conexion": f"{data['ultima_fecha']} {data['horario_legible']}",
+                "archivo_origen": data["archivo_origen"] or ""
+            })
         return sorted(resultado, key=lambda x: x["uptime"])
-    except Exception as e: return []
+    except Exception as e:
+        return []
 
 # ==========================================
 # ENDPOINTS USUARIOS
 # ==========================================
-class PerfilUpdate(BaseModel): nombre: str
-class PasswordUpdate(BaseModel): password_actual: str; password_nueva: str
-class UsuarioCreate(BaseModel): nombre_completo: str; email: str; password: str; rol: str
-class UsuarioUpdate(BaseModel): nombre_completo: Optional[str] = None; rol: Optional[str] = None; activo: Optional[bool] = None
+class PerfilUpdate(BaseModel):
+    nombre: str
+
+class PasswordUpdate(BaseModel):
+    password_actual: str
+    password_nueva: str
+
+class UsuarioCreate(BaseModel):
+    nombre_completo: str
+    email: str
+    password: str
+    rol: str
+
+class UsuarioUpdate(BaseModel):
+    nombre_completo: Optional[str] = None
+    rol: Optional[str] = None
+    activo: Optional[bool] = None
 
 @app.put("/api/usuarios/perfil")
 def actualizar_perfil(datos: PerfilUpdate, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
@@ -357,33 +552,55 @@ def actualizar_perfil(datos: PerfilUpdate, db: Session = Depends(get_db), usuari
 
 @app.put("/api/usuarios/password")
 def cambiar_password(datos: PasswordUpdate, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(obtener_usuario_actual)):
-    if not verificar_password(datos.password_actual, usuario_actual.password_hash): raise HTTPException(status_code=400, detail="Error")
+    if not verificar_password(datos.password_actual, usuario_actual.password_hash):
+        raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
     usuario_actual.password_hash = pwd_context.hash(datos.password_nueva)
     db.commit()
     return {"mensaje": "Contraseña actualizada"}
 
 @app.get("/api/usuarios/estadisticas")
 def obtener_estadisticas_usuarios(db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO"]))):
-    return {"total": db.query(models.Usuario).count(), "activos": db.query(models.Usuario).filter(models.Usuario.activo == True).count(), "roles": db.query(func.count(func.distinct(models.Usuario.rol))).scalar() or 0}
+    return {
+        "total": db.query(models.Usuario).count(),
+        "activos": db.query(models.Usuario).filter(models.Usuario.activo == True).count(),
+        "roles": db.query(func.count(func.distinct(models.Usuario.rol))).scalar() or 0
+    }
 
 @app.post("/api/usuarios")
 def crear_nuevo_usuario(datos: UsuarioCreate, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO"]))):
-    if db.query(models.Usuario).filter(models.Usuario.email == datos.email).first(): raise HTTPException(status_code=400, detail="Error")
-    nuevo_usuario = models.Usuario(nombre_completo=datos.nombre_completo, email=datos.email, password_hash=pwd_context.hash(datos.password), rol=datos.rol.upper(), activo=True)
+    if db.query(models.Usuario).filter(models.Usuario.email == datos.email).first():
+        raise HTTPException(status_code=400, detail="Email ya registrado")
+    nuevo_usuario = models.Usuario(
+        nombre_completo=datos.nombre_completo,
+        email=datos.email,
+        password_hash=pwd_context.hash(datos.password),
+        rol=datos.rol.upper(),
+        activo=True
+    )
     db.add(nuevo_usuario)
     db.commit()
     return {"mensaje": "Usuario creado"}
 
 @app.get("/api/usuarios")
 def listar_usuarios(db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO"]))):
-    return [{"id": u.id, "nombre_completo": u.nombre_completo, "email": u.email, "rol": u.rol, "activo": u.activo} for u in db.query(models.Usuario).all()]
+    return [{
+        "id": u.id,
+        "nombre_completo": u.nombre_completo,
+        "email": u.email,
+        "rol": u.rol,
+        "activo": u.activo
+    } for u in db.query(models.Usuario).all()]
 
 @app.put("/api/usuarios/{usuario_id}")
 def editar_usuario(usuario_id: int, datos: UsuarioUpdate, db: Session = Depends(get_db), usuario_actual: models.Usuario = Depends(requerir_roles(["ADMIN", "DIRECTIVO"]))):
     usuario = db.query(models.Usuario).filter(models.Usuario.id == usuario_id).first()
-    if not usuario: raise HTTPException(status_code=404, detail="No encontrado")
-    if datos.nombre_completo is not None: usuario.nombre_completo = datos.nombre_completo
-    if datos.rol is not None: usuario.rol = datos.rol.upper()
-    if datos.activo is not None: usuario.activo = datos.activo
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if datos.nombre_completo is not None:
+        usuario.nombre_completo = datos.nombre_completo
+    if datos.rol is not None:
+        usuario.rol = datos.rol.upper()
+    if datos.activo is not None:
+        usuario.activo = datos.activo
     db.commit()
     return {"mensaje": "Actualizado"}

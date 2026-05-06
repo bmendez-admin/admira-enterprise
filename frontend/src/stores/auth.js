@@ -2,51 +2,53 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    // Intentamos recuperar los datos del "bolsillo" (LocalStorage) nada más empezar
-    token: localStorage.getItem('token') || null,
-    usuario: JSON.parse(localStorage.getItem('usuario')) || null,
-  }),
+    state: () => ({
+        token: localStorage.getItem('token') || null,
+        refreshToken: localStorage.getItem('refresh_token') || null,
+        usuario: JSON.parse(localStorage.getItem('usuario')) || null,
+    }),
 
-  getters: {
-    // Si hay token y no es null/undefined, estamos autenticados
-    isAuthenticated: (state) => !!state.token,
-  },
-
-  actions: {
-    // Esta función es vital: se asegura de que Axios siempre tenga el token listo
-    rehidratarSesion() {
-      if (this.token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
-      }
+    getters: {
+        isAuthenticated: (state) => !!state.token,
     },
 
-    async login(email, password) {
-      try {
-        const response = await axios.post('/login', { email, password });
+    actions: {
+        rehidratarSesion() {
+            if (this.token) {
+                axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+            }
+        },
 
-        this.token = response.data.access_token;
-        this.usuario = response.data.usuario;
+        async login(email, password) {
+            try {
+                const response = await axios.post(
+                    `${import.meta.env.VITE_API_URL}/login`,
+                    { email, password }
+                );
 
-        localStorage.setItem('token', this.token);
-        localStorage.setItem('usuario', JSON.stringify(this.usuario));
+                this.token = response.data.access_token;
+                this.refreshToken = response.data.refresh_token;
+                this.usuario = response.data.usuario;
 
-        // Ponemos el token en la "frente" de todas las peticiones futuras
-        axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+                localStorage.setItem('token', this.token);
+                localStorage.setItem('refresh_token', this.refreshToken);
+                localStorage.setItem('usuario', JSON.stringify(this.usuario));
 
-        return true;
-      } catch (error) {
-        console.error("Error en el login:", error);
-        throw error;
-      }
-    },
+                axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+                return true;
+            } catch (error) {
+                throw error;
+            }
+        },
 
-    logout() {
-      this.token = null;
-      this.usuario = null;
-      localStorage.removeItem('token');
-      localStorage.removeItem('usuario');
-      delete axios.defaults.headers.common['Authorization'];
+        logout() {
+            this.token = null;
+            this.refreshToken = null;
+            this.usuario = null;
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('usuario');
+            delete axios.defaults.headers.common['Authorization'];
+        }
     }
-  }
 });

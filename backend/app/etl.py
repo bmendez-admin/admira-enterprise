@@ -1,7 +1,8 @@
 """
 ETL — Admira Enterprise
-Lee archivos Excel RECIENTES desde Google Drive usando una Service Account.
-Solo procesa archivos modificados en los últimos 7 días para evitar timeout.
+Lee archivos Excel desde Google Drive usando una Service Account.
+Estrategia: lista todas las carpetas sin filtro de fecha,
+pero solo descarga archivos modificados recientemente.
 """
 
 import io
@@ -30,7 +31,7 @@ CREDENTIALS_PATH = os.getenv(
     "GOOGLE_CREDENTIALS_PATH",
     "/etc/secrets/google_credentials.json"
 )
-DIAS_ATRAS = int(os.getenv("ETL_DIAS_ATRAS", "7"))
+DIAS_ATRAS = int(os.getenv("ETL_DIAS_ATRAS", "30"))
 
 
 def obtener_servicio_drive():
@@ -38,15 +39,17 @@ def obtener_servicio_drive():
     return build("drive", "v3", credentials=creds)
 
 
-def listar_archivos_recientes(service, folder_id, dias_atras=7):
-    """Lista solo archivos .xlsx modificados en los últimos N días."""
+def listar_archivos_recientes(service, folder_id, fecha_limite_str):
+    """
+    Lista recursivamente carpetas sin filtro de fecha,
+    pero solo retorna archivos .xlsx modificados después de fecha_limite.
+    """
     archivos = []
-    fecha_limite = (datetime.now(timezone.utc) - timedelta(days=dias_atras)).strftime("%Y-%m-%dT%H:%M:%S")
     page_token = None
 
     while True:
         response = service.files().list(
-            q=f"'{folder_id}' in parents and trashed=false and modifiedTime > '{fecha_limite}'",
+            q=f"'{folder_id}' in parents and trashed=false",
             fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
             pageToken=page_token,
             includeItemsFromAllDrives=True,
@@ -55,10 +58,13 @@ def listar_archivos_recientes(service, folder_id, dias_atras=7):
 
         for item in response.get("files", []):
             if item["mimeType"] == "application/vnd.google-apps.folder":
-                # Recursión solo en subcarpetas también recientes
-                archivos.extend(listar_archivos_recientes(service, item["id"], dias_atras))
+                # Recursar en todas las subcarpetas sin filtro de fecha
+                archivos.extend(listar_archivos_recientes(service, item["id"], fecha_limite_str))
             elif item["name"].endswith(".xlsx") and not item["name"].startswith("~"):
-                archivos.append(item)
+                # Solo incluir archivos modificados recientemente
+                modified = item.get("modifiedTime", "")
+                if modified >= fecha_limite_str:
+                    archivos.append(item)
 
         page_token = response.get("nextPageToken")
         if not page_token:
@@ -195,7 +201,10 @@ def upsert_registros(db, registros):
 
 
 def procesar_todo():
-    print(f"🚀 INICIANDO ETL DESDE GOOGLE DRIVE (últimos {DIAS_ATRAS} días)...")
+    fecha_limite = datetime.now(timezone.utc) - timedelta(days=DIAS_ATRAS)
+    fecha_limite_str = fecha_limite.strftime("%Y-%m-%dT%H:%M:%S")
+    print(f"🚀 INICIANDO ETL DESDE GOOGLE DRIVE (archivos desde {fecha_limite.strftime('%d/%m/%Y')})...")
+
     try:
         service = obtener_servicio_drive()
         print("✅ Conexión a Google Drive establecida")
@@ -208,12 +217,13 @@ def procesar_todo():
     for responsable, folder_id in FOLDER_IDS.items():
         print(f"\n📁 Procesando carpeta: {responsable}")
         try:
-            archivos = listar_archivos_recientes(service, folder_id, DIAS_ATRAS)
-            print(f"   Encontrados: {len(archivos)} archivos recientes")
+            archivos = listar_archivos_recientes(service, folder_id, fecha_limite_str)
+            print(f"   Encontrados: {len(archivos)} archivos")
 
             for archivo in archivos:
                 nombre = archivo["name"]
-                print(f"  📄 {nombre}")
+                modified = archivo.get("modifiedTime", "")[:10]
+                print(f"  📄 {nombre} (modificado: {modified})")
                 try:
                     buffer = descargar_excel(service, archivo["id"])
                     registros = procesar_archivo_excel(buffer, nombre)
@@ -226,7 +236,7 @@ def procesar_todo():
 
     print(f"\n📊 Total registros procesados: {len(registros_totales)}")
     if not registros_totales:
-        print("⚠️ No se encontraron datos válidos en archivos recientes")
+        print("⚠️ No se encontraron archivos modificados recientemente")
         return
 
     db = SessionLocal()

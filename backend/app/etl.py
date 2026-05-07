@@ -1,14 +1,14 @@
 """
 ETL — Admira Enterprise
-Lee archivos Excel desde Google Drive usando una Service Account.
-Accede directamente a las carpetas de Aldair y Bryan por su ID.
+Lee archivos Excel RECIENTES desde Google Drive usando una Service Account.
+Solo procesa archivos modificados en los últimos 7 días para evitar timeout.
 """
 
 import io
 import os
 import re
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from google.oauth2.service_account import Credentials
@@ -20,7 +20,6 @@ from models import Reporte
 
 warnings.filterwarnings("ignore")
 
-# IDs directos de cada carpeta — no dependen del folder padre
 FOLDER_IDS = {
     "Aldair": "1DEgdjyFfcdci7PZwJ7ix_xZ7bdWN9XsP",
     "Byan":   "1yKQ2cgFIrqg1G7kfLgswQSa5ly0ePtZ9",
@@ -31,6 +30,7 @@ CREDENTIALS_PATH = os.getenv(
     "GOOGLE_CREDENTIALS_PATH",
     "/etc/secrets/google_credentials.json"
 )
+DIAS_ATRAS = int(os.getenv("ETL_DIAS_ATRAS", "7"))
 
 
 def obtener_servicio_drive():
@@ -38,14 +38,15 @@ def obtener_servicio_drive():
     return build("drive", "v3", credentials=creds)
 
 
-def listar_archivos_excel(service, folder_id):
-    """Lista recursivamente todos los .xlsx dentro de una carpeta."""
+def listar_archivos_recientes(service, folder_id, dias_atras=7):
+    """Lista solo archivos .xlsx modificados en los últimos N días."""
     archivos = []
+    fecha_limite = (datetime.now(timezone.utc) - timedelta(days=dias_atras)).strftime("%Y-%m-%dT%H:%M:%S")
     page_token = None
 
     while True:
         response = service.files().list(
-            q=f"'{folder_id}' in parents and trashed=false",
+            q=f"'{folder_id}' in parents and trashed=false and modifiedTime > '{fecha_limite}'",
             fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
             pageToken=page_token,
             includeItemsFromAllDrives=True,
@@ -54,7 +55,8 @@ def listar_archivos_excel(service, folder_id):
 
         for item in response.get("files", []):
             if item["mimeType"] == "application/vnd.google-apps.folder":
-                archivos.extend(listar_archivos_excel(service, item["id"]))
+                # Recursión solo en subcarpetas también recientes
+                archivos.extend(listar_archivos_recientes(service, item["id"], dias_atras))
             elif item["name"].endswith(".xlsx") and not item["name"].startswith("~"):
                 archivos.append(item)
 
@@ -66,10 +68,7 @@ def listar_archivos_excel(service, folder_id):
 
 
 def descargar_excel(service, file_id):
-    request = service.files().get_media(
-        fileId=file_id,
-        supportsAllDrives=True
-    )
+    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
     buffer = io.BytesIO()
     downloader = MediaIoBaseDownload(buffer, request)
     done = False
@@ -93,7 +92,6 @@ def limpiar_hora(texto_columna):
 
 
 def detectar_header_row(df_raw):
-    """Bryan tiene una fila de título antes de los headers reales."""
     primera_fila = str(df_raw.iloc[0, 0]).upper()
     if "REPORTE" in primera_fila or "DIA" in primera_fila or "FECHA" not in primera_fila:
         return 1
@@ -197,7 +195,7 @@ def upsert_registros(db, registros):
 
 
 def procesar_todo():
-    print("🚀 INICIANDO ETL DESDE GOOGLE DRIVE...")
+    print(f"🚀 INICIANDO ETL DESDE GOOGLE DRIVE (últimos {DIAS_ATRAS} días)...")
     try:
         service = obtener_servicio_drive()
         print("✅ Conexión a Google Drive establecida")
@@ -210,8 +208,8 @@ def procesar_todo():
     for responsable, folder_id in FOLDER_IDS.items():
         print(f"\n📁 Procesando carpeta: {responsable}")
         try:
-            archivos = listar_archivos_excel(service, folder_id)
-            print(f"   Encontrados: {len(archivos)} archivos")
+            archivos = listar_archivos_recientes(service, folder_id, DIAS_ATRAS)
+            print(f"   Encontrados: {len(archivos)} archivos recientes")
 
             for archivo in archivos:
                 nombre = archivo["name"]
@@ -228,7 +226,7 @@ def procesar_todo():
 
     print(f"\n📊 Total registros procesados: {len(registros_totales)}")
     if not registros_totales:
-        print("⚠️ No se encontraron datos válidos")
+        print("⚠️ No se encontraron datos válidos en archivos recientes")
         return
 
     db = SessionLocal()
